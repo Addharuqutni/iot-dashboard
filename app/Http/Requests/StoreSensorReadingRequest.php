@@ -7,11 +7,23 @@ use Illuminate\Validation\Rule;
 
 class StoreSensorReadingRequest extends FormRequest
 {
+    /**
+     * Memeriksa izin request berdasarkan API key dari ESP32.
+     *
+     * Function ini membandingkan api_key pada payload dengan IOT_API_KEY
+     * yang disimpan di konfigurasi Laravel.
+     */
     public function authorize(): bool
     {
         return hash_equals((string) config('services.iot.api_key'), (string) $this->input('api_key'));
     }
 
+    /**
+     * Menentukan aturan validasi untuk payload sensor.
+     *
+     * Function ini memastikan semua field dari ESP32 memiliki tipe data,
+     * rentang nilai, dan pilihan status yang sesuai sebelum disimpan.
+     */
     public function rules(): array
     {
         return [
@@ -40,6 +52,12 @@ class StoreSensorReadingRequest extends FormRequest
         ];
     }
 
+    /**
+     * Mengembalikan response JSON saat API key tidak valid.
+     *
+     * Function ini mengganti response authorization default Laravel agar
+     * ESP32 menerima pesan error JSON yang mudah dibaca di Serial Monitor.
+     */
     protected function failedAuthorization(): void
     {
         abort(response()->json(['message' => 'Unauthorized. API key tidak valid.'], 401));

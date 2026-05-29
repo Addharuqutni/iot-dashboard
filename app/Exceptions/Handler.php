@@ -19,7 +19,10 @@ class Handler extends ExceptionHandler
     ];
 
     /**
-     * Register the exception handling callbacks for the application.
+     * Mendaftarkan callback penanganan error aplikasi.
+     *
+     * Function ini digunakan untuk menambahkan logic pelaporan atau
+     * penanganan exception khusus jika aplikasi membutuhkannya.
      */
     public function register(): void
     {

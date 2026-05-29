@@ -8,7 +8,10 @@ use Illuminate\Support\ServiceProvider;
 class BroadcastServiceProvider extends ServiceProvider
 {
     /**
-     * Bootstrap any application services.
+     * Mendaftarkan route broadcast aplikasi.
+     *
+     * Function ini mengaktifkan route broadcasting dan memuat definisi
+     * channel dari routes/channels.php.
      */
     public function boot(): void
     {

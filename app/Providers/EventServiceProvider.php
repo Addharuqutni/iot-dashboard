@@ -21,7 +21,10 @@ class EventServiceProvider extends ServiceProvider
     ];
 
     /**
-     * Register any events for your application.
+     * Mendaftarkan event dan listener aplikasi.
+     *
+     * Function ini digunakan untuk konfigurasi tambahan event jika daftar
+     * listener pada property listen belum cukup.
      */
     public function boot(): void
     {
@@ -29,7 +32,10 @@ class EventServiceProvider extends ServiceProvider
     }
 
     /**
-     * Determine if events and listeners should be automatically discovered.
+     * Menentukan apakah event listener ditemukan otomatis oleh Laravel.
+     *
+     * Function ini mengembalikan false agar aplikasi hanya memakai listener
+     * yang didaftarkan secara eksplisit.
      */
     public function shouldDiscoverEvents(): bool
     {

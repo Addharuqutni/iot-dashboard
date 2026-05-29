@@ -11,7 +11,10 @@ use Symfony\Component\HttpFoundation\Response;
 class RedirectIfAuthenticated
 {
     /**
-     * Handle an incoming request.
+     * Menangani request dari user yang sudah login.
+     *
+     * Function ini mengecek guard autentikasi. Jika user sudah login,
+     * user diarahkan ke halaman HOME. Jika belum login, request diteruskan.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */

@@ -20,7 +20,10 @@ class RouteServiceProvider extends ServiceProvider
     public const HOME = '/home';
 
     /**
-     * Define your route model bindings, pattern filters, and other route configuration.
+     * Mendaftarkan konfigurasi route aplikasi.
+     *
+     * Function ini mengatur rate limiter untuk route API, lalu memuat
+     * route dari routes/api.php dan routes/web.php.
      */
     public function boot(): void
     {

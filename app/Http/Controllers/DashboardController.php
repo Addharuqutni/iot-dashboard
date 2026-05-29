@@ -7,6 +7,12 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    /**
+     * Menampilkan halaman dashboard monitoring tanaman.
+     *
+     * Function ini mengambil data sensor terbaru, riwayat data terakhir,
+     * dan menyiapkan data grafik untuk dikirim ke view dashboard.
+     */
     public function index(): View
     {
         $latest = SensorReading::latest()->first();

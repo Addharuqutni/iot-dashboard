@@ -8,7 +8,10 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     /**
-     * Define the application's command schedule.
+     * Menentukan jadwal command otomatis aplikasi.
+     *
+     * Function ini dipakai jika aplikasi membutuhkan task terjadwal,
+     * misalnya menjalankan command Laravel setiap jam atau setiap hari.
      */
     protected function schedule(Schedule $schedule): void
     {
@@ -16,7 +19,10 @@ class Kernel extends ConsoleKernel
     }
 
     /**
-     * Register the commands for the application.
+     * Mendaftarkan command console milik aplikasi.
+     *
+     * Function ini memuat command dari folder app/Console/Commands
+     * dan route console dari routes/console.php.
      */
     protected function commands(): void
     {
