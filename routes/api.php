@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\EvaluationController;
 use App\Http\Controllers\SensorDataController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,3 +18,5 @@ use Illuminate\Support\Facades\Route;
 Route::post('/sensor-data', [SensorDataController::class, 'store']);
 Route::get('/sensor-readings/latest', [SensorDataController::class, 'latest']);
 Route::get('/sensor-readings/history', [SensorDataController::class, 'history']);
+
+Route::get('/evaluation/metrics', [EvaluationController::class, 'metrics']);

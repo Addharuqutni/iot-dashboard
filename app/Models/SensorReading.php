@@ -12,6 +12,9 @@ class SensorReading extends Model
     protected $fillable = [
         'device_id',
         'sequence_no',
+        'sent_at',
+        'device_total_sent',
+        'delay_ms',
         'soil_raw',
         'moisture_percent',
         'soil_condition',
@@ -31,6 +34,9 @@ class SensorReading extends Model
 
     protected $casts = [
         'sequence_no' => 'integer',
+        'sent_at' => 'datetime',
+        'device_total_sent' => 'integer',
+        'delay_ms' => 'integer',
         'soil_raw' => 'integer',
         'moisture_percent' => 'float',
         'distance_cm' => 'float',

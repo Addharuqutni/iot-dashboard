@@ -33,6 +33,10 @@ return [
 
     'iot' => [
         'api_key' => env('IOT_API_KEY'),
+        // Timezone yang dipakai ESP32 saat mengirim sent_at / device_timestamp.
+        // Format firmware: "Y-m-d H:i:s" tanpa offset, sehingga server perlu
+        // tahu zona waktu device untuk konversi ke UTC saat hitung delay.
+        'device_timezone' => env('IOT_DEVICE_TIMEZONE', 'Asia/Jakarta'),
     ],
 
 ];

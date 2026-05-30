@@ -22,6 +22,10 @@
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
+                <a href="{{ route('evaluation') }}" class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+                    Evaluasi
+                </a>
                 <span id="liveStatus" class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
                     <span id="liveDot" class="h-2 w-2 rounded-full bg-gray-400"></span>
                     <span id="liveLabel">Connecting...</span>
@@ -99,6 +103,30 @@
                 </article>
             </section>
 
+            {{-- EVALUASI RINGKAS (window: Hari Ini) --}}
+            <section class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <article class="rounded-lg border border-gray-200 bg-white p-5">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">PDR (Hari Ini)</p>
+                    <div id="evalPdr" class="mt-2 text-2xl font-semibold text-gray-900">—%</div>
+                    <p id="evalPdrMeta" class="mt-1 text-xs text-gray-500">Packet Delivery Ratio</p>
+                </article>
+                <article class="rounded-lg border border-gray-200 bg-white p-5">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Sent / Received</p>
+                    <div id="evalCount" class="mt-2 text-2xl font-semibold text-gray-900">— / —</div>
+                    <p id="evalLost" class="mt-1 text-xs text-gray-500">Hilang: —</p>
+                </article>
+                <article class="rounded-lg border border-gray-200 bg-white p-5">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Delay Rata-rata</p>
+                    <div id="evalDelay" class="mt-2 text-2xl font-semibold text-gray-900">— ms</div>
+                    <p id="evalDelayMeta" class="mt-1 text-xs text-gray-500">min — / max — ms</p>
+                </article>
+                <article class="rounded-lg border border-gray-200 bg-white p-5">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Status Sistem</p>
+                    <div id="evalStatus" class="mt-2 text-2xl font-semibold text-gray-900">—</div>
+                    <p id="evalStatusMeta" class="mt-1 text-xs text-gray-500">Online & value tampil</p>
+                </article>
+            </section>
+
             {{-- CHART + DETAIL --}}
             <section class="mt-6 grid gap-6 lg:grid-cols-3">
                 <article class="rounded-lg border border-gray-200 bg-white p-5 lg:col-span-2">
@@ -137,7 +165,7 @@
                     </h2>
                     <span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                        Auto-refresh tiap 5 detik
+                        Auto-refresh tiap 2 detik
                     </span>
                 </div>
                 <div class="overflow-x-auto">
@@ -179,11 +207,14 @@
     <script>
         // ============================================================
         // REAL-TIME DASHBOARD
-        // Polling /api/sensor-readings/history setiap 5 detik.
+        // Polling /api/sensor-readings/history setiap 2 detik.
         // Update KPI, detail panel, tabel riwayat, dan chart tanpa reload.
+        // Watchdog: > 4 detik tanpa data baru -> status berubah Disconnected.
         // ============================================================
 
-        const POLL_INTERVAL_MS = 5000;
+        const POLL_INTERVAL_MS = 2000;          // polling tiap 2 detik
+        const STALE_THRESHOLD_MS = 4000;        // > 4 detik tanpa data = disconnect
+        const WATCHDOG_INTERVAL_MS = 1000;      // cek staleness tiap 1 detik
         const HISTORY_LIMIT = 50;
         const HISTORY_ROWS = 20; // jumlah baris tabel yang ditampilkan
 
@@ -228,10 +259,26 @@
                 wrap.classList.add('border-rose-200','bg-rose-50','text-rose-700');
                 dot.classList.add('bg-rose-500');
                 label.textContent = 'Disconnected';
+            } else if (state === 'stale') {
+                wrap.classList.add('border-rose-200','bg-rose-50','text-rose-700');
+                dot.classList.add('bg-rose-500');
+                label.textContent = 'Disconnected';
             } else {
                 wrap.classList.add('border-gray-200','bg-gray-100','text-gray-500');
                 dot.classList.add('bg-gray-400');
                 label.textContent = 'Connecting...';
+            }
+        };
+
+        // ---------- Watchdog: deteksi data stale ----------
+        // Kalau > STALE_THRESHOLD_MS tanpa data baru, paksa status -> Disconnected
+        let lastDataReceivedAt = null;
+
+        const checkStaleness = () => {
+            if (lastDataReceivedAt === null) return;
+            const diff = Date.now() - lastDataReceivedAt;
+            if (diff > STALE_THRESHOLD_MS) {
+                setLiveStatus('stale');
             }
         };
 
@@ -354,6 +401,7 @@
 
         // ---------- Polling ----------
         let lastSeq = null;
+        let lastId = null;
 
         const fetchData = async () => {
             try {
@@ -368,7 +416,7 @@
 
                 if (readings.length === 0) {
                     toggleEmpty(false);
-                    setLiveStatus('live');
+                    setLiveStatus('stale');
                     return;
                 }
 
@@ -376,19 +424,63 @@
 
                 const latest = readings[0];
 
-                // Skip update kalau data sama (tidak ada yg baru)
-                if (latest.sequence_no !== lastSeq || latest.id !== undefined) {
+                // Cek apakah ada data baru (sequence_no atau id berubah)
+                const isNewData = latest.sequence_no !== lastSeq || latest.id !== lastId;
+
+                if (isNewData) {
                     updateLatest(latest);
                     updateTable(readings);
                     if (!chart) initChart();
                     updateChart(readings);
                     lastSeq = latest.sequence_no;
+                    lastId = latest.id;
+                    lastDataReceivedAt = Date.now();
+                    setLiveStatus('live');
+                } else {
+                    // Tidak ada data baru — cek staleness berdasar timestamp data terakhir
+                    const latestTs = new Date(latest.created_at).getTime();
+                    const age = Date.now() - latestTs;
+                    if (age > STALE_THRESHOLD_MS) {
+                        setLiveStatus('stale');
+                    } else {
+                        setLiveStatus('live');
+                    }
                 }
-
-                setLiveStatus('live');
             } catch (err) {
                 console.error('Polling error:', err);
                 setLiveStatus('error');
+            }
+        };
+
+        // ---------- Evaluasi Ringkas (window: Hari Ini) ----------
+        const fetchEvaluation = async () => {
+            try {
+                const res = await fetch('/api/evaluation/metrics', {
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store',
+                });
+                if (!res.ok) return;
+                const r = await res.json();
+                const m = r.metrics.today;
+                const s = r.dashboard_status;
+
+                document.getElementById('evalPdr').textContent = `${m.pdr}%`;
+                document.getElementById('evalPdrMeta').textContent = m.pdr_estimated
+                    ? 'Estimasi (firmware lama)'
+                    : 'Packet Delivery Ratio';
+                document.getElementById('evalCount').textContent = `${m.sent} / ${m.received}`;
+                document.getElementById('evalLost').textContent = `Hilang: ${m.lost}`;
+                document.getElementById('evalDelay').textContent =
+                    m.delay_avg_ms === null ? '— ms' : `${m.delay_avg_ms} ms`;
+                document.getElementById('evalDelayMeta').textContent =
+                    `min ${m.delay_min_ms ?? '—'} / max ${m.delay_max_ms ?? '—'} ms`;
+
+                const ok = s.online && s.value_displayed;
+                document.getElementById('evalStatus').textContent = ok ? 'OK' : 'Cek';
+                document.getElementById('evalStatusMeta').textContent =
+                    `Online: ${s.online ? 'Ya' : 'Tidak'} · Value: ${s.value_displayed ? 'Ya' : 'Tidak'}`;
+            } catch (err) {
+                console.error('Evaluation polling error:', err);
             }
         };
 
@@ -396,10 +488,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             @if ($latest)
                 initChart();
+                // Inisialisasi watchdog dari timestamp data awal server
+                lastDataReceivedAt = new Date('{{ $latest->created_at->toIso8601String() }}').getTime();
             @endif
             setLiveStatus('connecting');
             fetchData();
+            fetchEvaluation();
             setInterval(fetchData, POLL_INTERVAL_MS);
+            setInterval(checkStaleness, WATCHDOG_INTERVAL_MS);
+            setInterval(fetchEvaluation, 5000);
         });
     </script>
 </body>

@@ -31,6 +31,16 @@ class StoreSensorReadingRequest extends FormRequest
             'device_id' => ['required', 'string', 'max:80'],
             'sequence_no' => ['nullable', 'integer', 'min:0'],
 
+            // Field evaluasi: timestamp kirim dari ESP32 (ISO8601 / "Y-m-d H:i:s")
+            // dan counter total request kumulatif. Dipakai untuk hitung PDR & delay.
+            // Alias diterima untuk kompatibilitas firmware lama:
+            //   device_timestamp -> sent_at
+            //   sequence_no      -> total_sent (fallback)
+            'sent_at' => ['nullable', 'date'],
+            'device_timestamp' => ['nullable', 'date'],
+            'total_sent' => ['nullable', 'integer', 'min:0'],
+            'device_epoch' => ['nullable', 'integer', 'min:0'],
+
             'soil_raw' => ['required', 'integer', 'min:0', 'max:4095'],
             'moisture_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'soil_condition' => ['required', 'string', Rule::in(['Kering', 'Lembab', 'Basah'])],

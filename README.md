@@ -26,7 +26,9 @@ Sensor yang digunakan:
 - KPI card untuk kelembapan tanah, cadangan air, suhu, dan IKP.
 - Grafik sensor menggunakan Chart.js.
 - Tabel riwayat data terbaru.
-- Auto-refresh dashboard tiap 5 detik.
+- Auto-refresh dashboard tiap 2 detik.
+- Watchdog status: Live → Disconnected jika > 4 detik tanpa data.
+- Halaman evaluasi sistem: Packet Delivery Ratio, delay pengiriman, status online.
 - Empty state jika data sensor belum tersedia.
 
 ---
@@ -254,7 +256,9 @@ Catatan:
 | `POST` | `/api/sensor-data` | Menerima data sensor dari ESP32 |
 | `GET` | `/api/sensor-readings/latest` | Mengambil data sensor terbaru |
 | `GET` | `/api/sensor-readings/history` | Mengambil riwayat data sensor |
+| `GET` | `/api/evaluation/metrics` | Metrik evaluasi (PDR, delay, status) |
 | `GET` | `/` | Menampilkan dashboard |
+| `GET` | `/evaluation` | Halaman evaluasi sistem |
 
 ### Query Parameter History
 
@@ -285,6 +289,8 @@ Contoh payload lengkap:
   "api_key": "ganti_dengan_api_key_rahasia",
   "device_id": "POT-001",
   "sequence_no": 1,
+  "sent_at": "2026-05-30T10:00:00Z",
+  "total_sent": 1,
   "soil_raw": 3000,
   "moisture_percent": 50.0,
   "soil_condition": "Lembab",
@@ -309,6 +315,8 @@ Contoh payload lengkap:
 |---|---|---|
 | `api_key` | string | Kunci autentikasi ESP32 |
 | `device_id` | string | ID perangkat |
+| `sent_at` | string (ISO8601) | Timestamp NTP saat ESP32 mengirim. Dipakai untuk hitung delay. |
+| `total_sent` | integer | Counter total request kumulatif ESP32. Dipakai untuk hitung PDR. |
 | `soil_raw` | integer | Nilai ADC sensor tanah 0-4095 |
 | `moisture_percent` | number | Kelembapan tanah 0-100 |
 | `soil_condition` | string | `Kering`, `Lembab`, atau `Basah` |
