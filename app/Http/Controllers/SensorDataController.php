@@ -52,9 +52,9 @@ class SensorDataController extends Controller
             $sentAt = Carbon::parse($data['sent_at'], $deviceTimezone)->utc();
             $data['sent_at'] = $sentAt;
 
-            $delayMs = now()->diffInMilliseconds($sentAt, false);
+            $delayMs = $sentAt->diffInMilliseconds(now(), false);
             // Negatif berarti clock device lebih maju dari server; clamp ke 0.
-            $data['delay_ms'] = max(0, (int) abs($delayMs));
+            $data['delay_ms'] = max(0, (int) $delayMs);
         }
 
         $reading = SensorReading::create($data);
@@ -75,7 +75,10 @@ class SensorDataController extends Controller
      */
     public function latest(): JsonResponse
     {
-        $reading = SensorReading::latest()->first();
+        $reading = SensorReading::query()
+            ->latest()
+            ->latest('id')
+            ->first();
 
         return response()->json([
             'data' => $reading,
@@ -94,6 +97,7 @@ class SensorDataController extends Controller
 
         $readings = SensorReading::query()
             ->latest()
+            ->latest('id')
             ->limit($limit)
             ->get();
 

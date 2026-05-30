@@ -54,7 +54,10 @@ class EvaluationService
      */
     public function activeSessionStart(): ?Carbon
     {
-        $latest = SensorReading::latest()->first();
+        $latest = SensorReading::query()
+            ->latest()
+            ->latest('id')
+            ->first();
         if (! $latest || ! $latest->created_at) {
             return null;
         }
@@ -66,6 +69,7 @@ class EvaluationService
 
         $readings = SensorReading::query()
             ->latest()
+            ->latest('id')
             ->limit(1000)
             ->get(['id', 'created_at']);
 
@@ -141,23 +145,43 @@ class EvaluationService
         $query->where('created_at', '<=', $range['to']);
 
         $received = (clone $query)->count();
-
-        // Sent = sum atas device dari (max - min + 1) device_total_sent.
-        $sentRows = (clone $query)
+        $receivedWithCounter = (clone $query)
             ->whereNotNull('device_total_sent')
-            ->select('device_id', DB::raw('MIN(device_total_sent) AS min_total'), DB::raw('MAX(device_total_sent) AS max_total'))
-            ->groupBy('device_id')
-            ->get();
+            ->count();
+
+        // Sent = akumulasi counter device_total_sent per device, dengan dukungan counter reset.
+        $sentReadings = (clone $query)
+            ->whereNotNull('device_total_sent')
+            ->orderBy('device_id')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['device_id', 'device_total_sent']);
 
         $sent = 0;
-        foreach ($sentRows as $row) {
-            $sent += ((int) $row->max_total) - ((int) $row->min_total) + 1;
+        $previousByDevice = [];
+        foreach ($sentReadings as $reading) {
+            $deviceId = (string) $reading->device_id;
+            $current = (int) $reading->device_total_sent;
+
+            if (! array_key_exists($deviceId, $previousByDevice)) {
+                $sent += 1;
+            } elseif ($current >= $previousByDevice[$deviceId]) {
+                $sent += $current - $previousByDevice[$deviceId];
+            } else {
+                // Counter reset (misalnya ESP32 reboot). Hitung packet saat ini sebagai awal sesi baru.
+                $sent += 1;
+            }
+
+            $previousByDevice[$deviceId] = $current;
         }
 
-        $isEstimated = $sent === 0;
-        if ($isEstimated) {
+        $isEstimated = $sent === 0 || $receivedWithCounter !== $received;
+        if ($sent === 0) {
             // Tidak ada device_total_sent valid → estimasi sent = received.
             $sent = $received;
+        } elseif ($receivedWithCounter !== $received) {
+            // Counter parsial → jangan gabungkan received tanpa counter ke PDR akurat.
+            $received = $receivedWithCounter;
         }
 
         $pdr = $sent > 0 ? round(($received / $sent) * 100, 2) : 0.0;
@@ -203,7 +227,10 @@ class EvaluationService
      */
     public function dashboardStatus(): array
     {
-        $latest = SensorReading::latest()->first();
+        $latest = SensorReading::query()
+            ->latest()
+            ->latest('id')
+            ->first();
 
         $latestAge = null;
         $valueDisplayed = false;

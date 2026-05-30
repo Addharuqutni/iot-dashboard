@@ -1,21 +1,23 @@
 # Dokumentasi Project — IoT Dashboard Monitoring Tanaman
 
-Dokumentasi ini menjelaskan project Laravel untuk menerima data sensor dari ESP32, menyimpan data ke database, dan menampilkan kondisi tanaman pada dashboard web secara real-time.
+Dokumentasi ini menjelaskan project Laravel untuk menerima data sensor dari ESP32, menyimpan data ke database, menampilkan kondisi tanaman pada dashboard real-time, dan mengevaluasi kualitas pengiriman (PDR + delay).
 
 ---
 
 ## 1. Gambaran Umum
 
-Project ini adalah aplikasi monitoring tanaman berbasis Laravel. Sistem membaca data dari perangkat ESP32 yang terhubung dengan sensor kelembapan tanah, sensor jarak air, dan sensor suhu/kelembapan udara. Data dikirim ke Laravel lewat REST API, divalidasi, disimpan ke database, lalu ditampilkan pada dashboard.
+Project ini adalah aplikasi monitoring tanaman berbasis Laravel. Sistem membaca data dari ESP32 (sensor kelembapan tanah, sensor jarak air, DHT22). ESP32 mengirim data ke Laravel via REST API; Laravel memvalidasi, menghitung delay, menyimpan, lalu menampilkan pada dashboard. Tersedia juga halaman evaluasi yang menghitung Packet Delivery Ratio (PDR) dan delay rata-rata per window waktu.
 
 ### Tujuan Sistem
 
 - Menerima data sensor dari ESP32.
-- Memvalidasi data dan API key sebelum data masuk database.
+- Memvalidasi API key dan payload sebelum data masuk database.
 - Menyimpan riwayat pembacaan sensor.
 - Menampilkan kondisi terbaru tanaman.
 - Menampilkan grafik perubahan sensor.
-- Memberikan status penyiraman melalui nilai IKP.
+- Memberikan status penyiraman lewat nilai IKP.
+- Mengukur kualitas pengiriman (PDR, delay) per window 15 menit / hari ini / all-time.
+- Mendeteksi disconnect device dan mereset metrik saat sesi baru dimulai.
 
 ### Teknologi Utama
 
@@ -23,7 +25,7 @@ Project ini adalah aplikasi monitoring tanaman berbasis Laravel. Sistem membaca 
 |---|---|
 | Backend | Laravel 10 |
 | Bahasa | PHP 8.1+ |
-| Database | MySQL secara default |
+| Database | MySQL (production), SQLite in-memory (testing) |
 | Frontend | Blade, TailwindCSS CDN, Chart.js CDN |
 | API | Laravel API routes |
 | Perangkat | ESP32 |
@@ -35,36 +37,42 @@ Project ini adalah aplikasi monitoring tanaman berbasis Laravel. Sistem membaca 
 
 ```txt
 ESP32
-  ├─ Baca sensor tanah
-  ├─ Baca jarak air
-  ├─ Baca suhu dan humidity
+  ├─ Baca sensor tanah / air / suhu / humidity
   ├─ Hitung skor dan IKP
-  └─ Kirim JSON ke API Laravel
+  ├─ Sinkron NTP (WIB / GMT+7)
+  ├─ Tambah counter total_sent
+  └─ Kirim JSON ke API Laravel (sent_at + total_sent)
 
 Laravel API
   ├─ Validasi API key
-  ├─ Validasi format payload
-  ├─ Simpan data ke database
-  └─ Sediakan endpoint baca data
+  ├─ Validasi payload
+  ├─ Hitung delay_ms = now (UTC) - sent_at (parse pakai timezone device)
+  ├─ Simpan ke sensor_readings
+  └─ Endpoint pembacaan data + endpoint metrik evaluasi
 
 Database
-  └─ Tabel sensor_readings
+  └─ Tabel sensor_readings (data sensor + kolom evaluasi)
 
-Dashboard Web
-  ├─ Ambil data terbaru
-  ├─ Ambil riwayat data
-  ├─ Tampilkan KPI card
-  ├─ Tampilkan grafik
-  └─ Auto-refresh tiap 5 detik
+Dashboard Web ( / )
+  ├─ KPI card, detail terbaru, tabel riwayat, chart
+  └─ Polling /api/sensor-readings/history tiap 5 detik
+
+Halaman Evaluasi ( /evaluation )
+  ├─ PDR & delay per window (recent / today / all)
+  ├─ Status dashboard (online, value tampil, threshold stale)
+  └─ Polling /api/evaluation/metrics
 ```
 
 ### Alur Data Ringkas
 
 ```txt
-Sensor fisik -> ESP32 -> POST /api/sensor-data -> StoreSensorReadingRequest
--> SensorDataController@store -> SensorReading::create()
--> tabel sensor_readings -> DashboardController@index
--> resources/views/dashboard.blade.php
+Sensor fisik -> ESP32 -> POST /api/sensor-data
+  -> StoreSensorReadingRequest (auth + validasi)
+  -> SensorDataController@store (alias firmware lama, hitung delay_ms)
+  -> SensorReading::create()
+  -> tabel sensor_readings
+  -> DashboardController@index    -> resources/views/dashboard.blade.php
+  -> EvaluationController         -> EvaluationService -> resources/views/evaluation.blade.php
 ```
 
 ---
@@ -73,16 +81,24 @@ Sensor fisik -> ESP32 -> POST /api/sensor-data -> StoreSensorReadingRequest
 
 | Path | Fungsi |
 |---|---|
-| `routes/api.php` | Mendefinisikan endpoint API untuk ESP32 dan dashboard polling |
-| `routes/web.php` | Mendefinisikan route halaman dashboard |
-| `app/Http/Controllers/SensorDataController.php` | Logic penerimaan dan pembacaan data sensor via API |
-| `app/Http/Controllers/DashboardController.php` | Logic penyedia data awal untuk halaman dashboard |
-| `app/Http/Requests/StoreSensorReadingRequest.php` | Validasi API key dan payload sensor |
-| `app/Models/SensorReading.php` | Model Eloquent untuk tabel sensor_readings |
-| `database/migrations/2026_05_29_000000_create_sensor_readings_table.php` | Struktur tabel penyimpanan sensor |
-| `resources/views/dashboard.blade.php` | Tampilan dashboard, grafik, tabel, polling JavaScript |
-| `config/services.php` | Konfigurasi API key IoT dari `.env` |
-| `.env.example` | Template konfigurasi environment |
+| `routes/api.php` | Endpoint API: sensor-data, sensor-readings, evaluation/metrics |
+| `routes/web.php` | Route halaman: `/` (dashboard) dan `/evaluation` |
+| `app/Http/Controllers/SensorDataController.php` | Penerimaan + pembacaan data sensor, hitung delay_ms |
+| `app/Http/Controllers/DashboardController.php` | Data awal dashboard |
+| `app/Http/Controllers/EvaluationController.php` | View evaluasi + endpoint metrics JSON |
+| `app/Http/Requests/StoreSensorReadingRequest.php` | Authorize API key + validasi payload (termasuk field evaluasi) |
+| `app/Models/SensorReading.php` | Eloquent model `sensor_readings` |
+| `app/Services/EvaluationService.php` | Hitung PDR, delay, sesi aktif, status dashboard |
+| `database/migrations/2026_05_29_000000_create_sensor_readings_table.php` | Tabel utama |
+| `database/migrations/2026_05_30_000000_add_evaluation_columns_to_sensor_readings.php` | Tambah `sent_at`, `device_total_sent`, `delay_ms` |
+| `database/factories/SensorReadingFactory.php` | Factory untuk testing |
+| `resources/views/dashboard.blade.php` | UI dashboard, chart, polling |
+| `resources/views/evaluation.blade.php` | UI evaluasi PDR/delay/status |
+| `config/services.php` | `iot.api_key` + `iot.device_timezone` |
+| `tests/Feature/SensorDataControllerTest.php` | Feature test endpoint POST sensor |
+| `tests/Unit/EvaluationServiceTest.php` | Unit test service evaluasi |
+| `phpunit.xml` | Konfigurasi PHPUnit (SQLite in-memory) |
+| `.env.example` | Template environment |
 
 ---
 
@@ -108,13 +124,19 @@ POST /api/sensor-data
 ### Alur Logic
 
 1. ESP32 mengirim JSON ke `/api/sensor-data`.
-2. Laravel menjalankan `StoreSensorReadingRequest`.
-3. Request memeriksa `api_key`.
-4. Request memvalidasi semua field sensor.
-5. Controller mengambil data valid lewat `$request->validated()`.
-6. Field `api_key` dihapus agar tidak disimpan.
-7. Data disimpan memakai `SensorReading::create($data)`.
-8. Server mengembalikan response JSON status `201`.
+2. `StoreSensorReadingRequest` memeriksa `api_key` (`hash_equals`).
+3. Request memvalidasi semua field (data sensor + field evaluasi opsional).
+4. Controller mengambil data lewat `$request->validated()`.
+5. `api_key` dihapus agar tidak disimpan.
+6. Alias firmware lama dikonversi:
+   - `device_timestamp` → `sent_at`.
+   - `total_sent` → `device_total_sent`.
+   - Jika `total_sent` belum dikirim, fallback ke `sequence_no`.
+   - `device_epoch` dibuang (redundant dengan `sent_at`).
+7. `sent_at` di-parse pakai timezone device (`config('services.iot.device_timezone')`, default `Asia/Jakarta`) lalu dikonversi ke UTC.
+8. `delay_ms = max(0, now() - sent_at)` dalam milidetik. Negatif (clock device lebih maju) di-clamp ke 0.
+9. `SensorReading::create($data)`.
+10. Response JSON status `201` berisi `id`, `received_at`, `delay_ms`.
 
 ### Response Berhasil
 
@@ -122,7 +144,8 @@ POST /api/sensor-data
 {
   "message": "Data sensor berhasil disimpan.",
   "id": 1,
-  "received_at": "2026-05-30T10:00:00.000000Z"
+  "received_at": "2026-05-30T10:00:00.000000Z",
+  "delay_ms": 5000
 }
 ```
 
@@ -140,71 +163,63 @@ Status HTTP: `401`.
 
 ## 4.2 Modul API Pembacaan Data Terbaru
 
-Modul ini mengambil satu data sensor paling baru.
-
-### Endpoint
-
 ```txt
 GET /api/sensor-readings/latest
 ```
 
-### Logic
-
-- Controller menjalankan `SensorReading::latest()->first()`.
-- Data terbaru dikembalikan dalam key `data`.
-- Jika database kosong, nilai `data` menjadi `null`.
-
-### Contoh Response
-
-```json
-{
-  "data": {
-    "id": 1,
-    "device_id": "POT-001",
-    "sequence_no": 1,
-    "moisture_percent": 50,
-    "soil_condition": "Lembab",
-    "ikp": 50,
-    "watering_status": "Perlu dipantau",
-    "created_at": "2026-05-30T10:00:00.000000Z"
-  }
-}
-```
+- `SensorReading::query()->latest()->latest('id')->first()`.
+- `latest('id')` jadi tie-breaker saat banyak baris share `created_at` yang sama.
+- Jika kosong: `data: null`.
 
 ---
 
 ## 4.3 Modul API Riwayat Sensor
-
-Modul ini mengambil beberapa data terbaru untuk dashboard, chart, dan tabel.
-
-### Endpoint
 
 ```txt
 GET /api/sensor-readings/history
 GET /api/sensor-readings/history?limit=50
 ```
 
-### Logic
-
-- Query parameter `limit` dibaca dari request.
-- Nilai `limit` dibatasi dari 1 sampai 500.
-- Data diambil dengan urutan terbaru ke terlama.
-- Response dikembalikan dalam key `data`.
-
-### Batas Limit
+- `limit` diclamp ke 1..500 (default 50).
+- Urutan terbaru → terlama (`latest()->latest('id')`).
 
 | Input `limit` | Hasil |
 |---:|---:|
 | kosong | 50 |
 | 0 atau negatif | 1 |
 | 1-500 | sesuai input |
-| lebih dari 500 | 500 |
+| > 500 | 500 |
 
 ---
 
-## 4.4 Modul Dashboard Web
+## 4.4 Modul API Evaluasi
 
-Dashboard menampilkan data monitoring tanaman dalam bentuk ringkas dan mudah dibaca.
+```txt
+GET /api/evaluation/metrics
+GET /api/evaluation/metrics?reset_on_disconnect=0
+```
+
+Mengembalikan PDR, delay, dan status dashboard untuk 3 window. Logic dijelaskan di [Section 12](#12-modul-evaluasi-pdr--delay).
+
+Response shape:
+
+```json
+{
+  "metrics": {
+    "recent": { "...": "metrik 15 menit terakhir" },
+    "today":  { "...": "metrik sejak 00:00 hari ini" },
+    "all":    { "...": "metrik all-time" }
+  },
+  "dashboard_status": { "online": true, "value_displayed": true, "latest_age_seconds": 4, "threshold_seconds": 25, "..." : "..." },
+  "active_session_start": "2026-05-30T09:55:30+00:00",
+  "reset_on_disconnect": true,
+  "generated_at": "2026-05-30T10:00:05+00:00"
+}
+```
+
+---
+
+## 4.5 Modul Dashboard Web
 
 ### Route
 
@@ -224,53 +239,68 @@ Nama route: `dashboard`.
 
 | Variable | Isi |
 |---|---|
-| `$latest` | Data sensor terbaru |
+| `$latest` | Data sensor terbaru (`SensorReading::latest()->first()`) |
 | `$readings` | 50 data terbaru |
-| `$chartLabels` | Label waktu untuk grafik |
-| `$moistureData` | Data kelembapan tanah untuk grafik |
-| `$waterData` | Data level air untuk grafik |
-| `$temperatureData` | Data suhu untuk grafik |
-| `$humidityData` | Data humidity untuk grafik |
-| `$ikpData` | Data IKP untuk grafik |
+| `$chartLabels` | Label waktu untuk grafik (`H:i:s`) |
+| `$moistureData` | Data kelembapan tanah |
+| `$waterData` | Data level air |
+| `$temperatureData` | Data suhu |
+| `$humidityData` | Data humidity |
+| `$ikpData` | Data IKP |
 
-### Logic Controller
-
-1. Ambil data terbaru: `SensorReading::latest()->first()`.
-2. Ambil 50 data terbaru: `SensorReading::latest()->limit(50)->get()`.
-3. Balik urutan data untuk chart agar grafik bergerak dari data lama ke terbaru.
-4. Kirim semua data ke view `dashboard`.
+`$readings` dibalik urutannya untuk chart agar grafik bergerak dari data lama ke terbaru.
 
 ---
 
-## 4.5 Modul Tampilan KPI Card
+## 4.6 Modul Halaman Evaluasi
 
-Dashboard memiliki 4 kartu KPI utama.
+### Route
+
+```txt
+GET /evaluation
+```
+
+Nama route: `evaluation`.
+
+### File Terkait
+
+- `routes/web.php`
+- `app/Http/Controllers/EvaluationController.php`
+- `app/Services/EvaluationService.php`
+- `resources/views/evaluation.blade.php`
+
+### Logic Controller
+
+- `index()`: render view `evaluation` dengan `EvaluationService::fullReport(resetOnDisconnect: false)`. Halaman tidak reset ke 0 saat device disconnected → user tetap melihat angka historis.
+- `metrics()`: endpoint JSON `/api/evaluation/metrics`. Default `reset_on_disconnect=true`. Frontend halaman evaluasi memanggil endpoint ini untuk polling.
+
+### Tampilan
+
+- 3 kartu status: Dashboard Online, Value Tampil, Threshold Stale.
+- Tabel metrik per window (15 menit / hari ini / all-time): Sent, Received, Lost, PDR, delay min/avg/max, samples.
+- Auto-refresh tiap 5 detik.
+
+---
+
+## 4.7 Modul Tampilan KPI Card
 
 | Kartu | Data | Keterangan |
 |---|---|---|
-| Kelembapan Tanah | `moisture_percent`, `soil_condition` | Menampilkan persentase tanah dan status kering/lembab/basah |
-| Cadangan Air | `water_level_percent`, `water_status` | Menampilkan sisa air dalam persen dan status air |
-| Suhu Udara | `temperature`, `dht_ok` | Menampilkan suhu dan status sensor DHT22 |
-| IKP | `ikp`, `watering_status` | Menampilkan indeks kesiapan penyiraman dan keputusan penyiraman |
+| Kelembapan Tanah | `moisture_percent`, `soil_condition` | Persentase + status Kering/Lembab/Basah |
+| Cadangan Air | `water_level_percent`, `water_status` | Persen + status |
+| Suhu Udara | `temperature`, `dht_ok` | Suhu + status DHT22 |
+| IKP | `ikp`, `watering_status` | Indeks + keputusan penyiraman |
 
 ### Empty State
-
-Jika belum ada data sensor, dashboard menampilkan pesan:
 
 ```txt
 Belum ada data sensor
 Kirim data ESP32 ke /api/sensor-data
 ```
 
-Jika data sudah ada, dashboard menampilkan KPI, grafik, detail terbaru, dan tabel riwayat.
-
 ---
 
-## 4.6 Modul Grafik Sensor
-
-Grafik dibuat memakai Chart.js.
-
-### Dataset Grafik
+## 4.8 Modul Grafik Sensor (Chart.js)
 
 | Dataset | Field Database | Warna |
 |---|---|---|
@@ -280,20 +310,13 @@ Grafik dibuat memakai Chart.js.
 | Humidity % | `humidity` | Ungu |
 | IKP | `ikp` | Merah |
 
-### Logic Grafik
-
-- Saat halaman pertama kali dibuka, chart memakai data dari controller.
-- Setelah itu JavaScript melakukan polling API history.
-- Data API terbaru dibalik urutannya sebelum masuk chart.
-- Tujuan: sumbu X bergerak dari data lama ke data terbaru.
+Initial render pakai data dari controller; setelah itu polling API history. Data API dibalik agar sumbu X bergerak lama → terbaru.
 
 ---
 
-## 4.7 Modul Detail Terbaru
+## 4.9 Modul Detail Terbaru
 
-Panel detail terbaru menampilkan informasi sensor lebih lengkap.
-
-| Label Tampilan | Field |
+| Label | Field |
 |---|---|
 | Device | `device_id` |
 | Sequence | `sequence_no` |
@@ -303,15 +326,11 @@ Panel detail terbaru menampilkan informasi sensor lebih lengkap.
 | Humidity | `humidity` |
 | Skor T/A/S | `soil_score`, `water_score`, `temp_score` |
 
-`Skor T/A/S` berarti skor Tanah / Air / Suhu.
-
 ---
 
-## 4.8 Modul Tabel Riwayat
+## 4.10 Modul Tabel Riwayat
 
-Tabel riwayat menampilkan 20 data terbaru dari hasil polling.
-
-### Kolom Tabel
+Menampilkan 20 baris pertama dari hasil polling.
 
 | Kolom | Field |
 |---|---|
@@ -323,20 +342,11 @@ Tabel riwayat menampilkan 20 data terbaru dari hasil polling.
 | IKP | `ikp` |
 | Status | `watering_status` |
 
-### Logic
-
-- JavaScript mengambil maksimal 50 data lewat API.
-- Tabel hanya menampilkan 20 baris pertama.
-- Baris pertama adalah data terbaru.
-- Teks dari API diamankan memakai `escapeHtml()` sebelum masuk HTML tabel.
+Teks dari API diamankan pakai `escapeHtml()` sebelum masuk DOM.
 
 ---
 
-## 4.9 Modul Auto-Refresh / Polling
-
-Dashboard memperbarui data tanpa reload halaman.
-
-### Konfigurasi JavaScript
+## 4.11 Modul Auto-Refresh / Polling
 
 ```js
 const POLL_INTERVAL_MS = 5000;
@@ -344,26 +354,11 @@ const HISTORY_LIMIT = 50;
 const HISTORY_ROWS = 20;
 ```
 
-### Logic Polling
-
-1. Fungsi `fetchData()` memanggil `/api/sensor-readings/history?limit=50`.
-2. Jika response sukses, data dibaca dari `json.data`.
-3. Jika data kosong, empty state ditampilkan.
-4. Jika data ada:
-   - KPI diperbarui.
-   - Detail terbaru diperbarui.
-   - Tabel diperbarui.
-   - Chart diperbarui.
-   - Status koneksi menjadi `Live`.
-5. Jika fetch gagal, status koneksi menjadi `Disconnected`.
-
-### Status Indicator
-
 | Status | Kondisi |
 |---|---|
-| Connecting... | Saat halaman baru dibuka |
+| Connecting... | Halaman baru dibuka |
 | Live | API berhasil diakses |
-| Disconnected | API gagal diakses atau server error |
+| Disconnected | API gagal / error |
 
 ---
 
@@ -371,20 +366,19 @@ const HISTORY_ROWS = 20;
 
 ## 5.1 Tabel `sensor_readings`
 
-Tabel ini menyimpan setiap data yang dikirim ESP32.
-
-### Struktur Kolom
-
 | Kolom | Tipe | Nullable | Keterangan |
 |---|---|---:|---|
 | `id` | bigint | Tidak | Primary key |
 | `device_id` | string | Tidak | ID perangkat ESP32 |
 | `sequence_no` | unsignedBigInteger | Ya | Nomor urut data dari ESP32 |
-| `soil_raw` | unsignedSmallInteger | Tidak | Nilai ADC sensor tanah |
-| `moisture_percent` | decimal(5,2) | Tidak | Persentase kelembapan tanah |
+| `sent_at` | timestamp | Ya | **Waktu kirim ESP32 (NTP), disimpan UTC, indexed** |
+| `device_total_sent` | unsignedBigInteger | Ya | **Counter kumulatif total request dari ESP32** |
+| `delay_ms` | integer | Ya | **`now() - sent_at` saat diterima server, ms (clamp ≥ 0)** |
+| `soil_raw` | unsignedSmallInteger | Tidak | ADC sensor tanah |
+| `moisture_percent` | decimal(5,2) | Tidak | Kelembapan tanah |
 | `soil_condition` | string(30) | Tidak | Status tanah |
 | `distance_cm` | decimal(6,2) | Ya | Jarak permukaan air |
-| `water_level_percent` | decimal(5,2) | Ya | Persentase level air |
+| `water_level_percent` | decimal(5,2) | Ya | Persen level air |
 | `water_volume_ml` | decimal(8,2) | Ya | Estimasi volume air |
 | `water_status` | string(50) | Tidak | Status cadangan air |
 | `temperature` | decimal(5,2) | Ya | Suhu udara |
@@ -394,30 +388,39 @@ Tabel ini menyimpan setiap data yang dikirim ESP32.
 | `water_score` | unsignedTinyInteger | Tidak | Skor air |
 | `temp_score` | unsignedTinyInteger | Tidak | Skor suhu |
 | `ikp` | unsignedSmallInteger | Tidak | Indeks Kesiapan Penyiraman |
-| `watering_status` | string(80) | Tidak | Status/keputusan penyiraman |
-| `created_at` | timestamp | Ya | Waktu data dibuat |
+| `watering_status` | string(80) | Tidak | Keputusan penyiraman |
+| `created_at` | timestamp | Ya | Waktu data masuk server |
 | `updated_at` | timestamp | Ya | Waktu data diubah |
 
 ### Index
 
 | Index | Tujuan |
 |---|---|
-| `device_id` | Mempercepat filter berdasarkan perangkat |
-| `sequence_no` | Mempercepat pencarian nomor urut |
-| `device_id`, `created_at` | Mempercepat riwayat data per perangkat |
+| `device_id` | Filter per perangkat |
+| `sequence_no` | Lookup nomor urut |
+| `sent_at` | Query window evaluasi |
+| `device_id`, `created_at` | Riwayat per perangkat |
+
+### Migration File
+
+- `2026_05_29_000000_create_sensor_readings_table.php` — schema dasar.
+- `2026_05_30_000000_add_evaluation_columns_to_sensor_readings.php` — menambah `sent_at`, `device_total_sent`, `delay_ms` dan index `sent_at`.
 
 ---
 
 ## 5.2 Model `SensorReading`
 
-Model memakai mass assignment lewat `$fillable`.
+Memakai `HasFactory` (factory di `database/factories/SensorReadingFactory.php`).
 
-### Field yang Bisa Disimpan
+### Field `$fillable`
 
 ```php
 protected $fillable = [
     'device_id',
     'sequence_no',
+    'sent_at',
+    'device_total_sent',
+    'delay_ms',
     'soil_raw',
     'moisture_percent',
     'soil_condition',
@@ -436,13 +439,14 @@ protected $fillable = [
 ];
 ```
 
-### Cast Data
-
-Model mengubah tipe data otomatis:
+### Cast
 
 | Field | Cast |
 |---|---|
 | `sequence_no` | integer |
+| `sent_at` | datetime |
+| `device_total_sent` | integer |
+| `delay_ms` | integer |
 | `soil_raw` | integer |
 | `moisture_percent` | float |
 | `distance_cm` | float |
@@ -460,7 +464,7 @@ Model mengubah tipe data otomatis:
 
 ## 6. Validasi Payload
 
-Validasi berada di `StoreSensorReadingRequest`.
+`StoreSensorReadingRequest`.
 
 ### API Key
 
@@ -468,7 +472,7 @@ Validasi berada di `StoreSensorReadingRequest`.
 return hash_equals((string) config('services.iot.api_key'), (string) $this->input('api_key'));
 ```
 
-`hash_equals()` dipakai agar perbandingan API key lebih aman terhadap timing attack.
+`hash_equals()` mencegah timing attack.
 
 ### Rules Validasi
 
@@ -477,6 +481,10 @@ return hash_equals((string) config('services.iot.api_key'), (string) $this->inpu
 | `api_key` | required, string |
 | `device_id` | required, string, max:80 |
 | `sequence_no` | nullable, integer, min:0 |
+| `sent_at` | nullable, date |
+| `device_timestamp` | nullable, date *(alias firmware lama → `sent_at`)* |
+| `total_sent` | nullable, integer, min:0 *(alias → `device_total_sent`)* |
+| `device_epoch` | nullable, integer, min:0 *(diterima tapi tidak disimpan)* |
 | `soil_raw` | required, integer, min:0, max:4095 |
 | `moisture_percent` | required, numeric, min:0, max:100 |
 | `soil_condition` | required, string, in: Kering/Lembab/Basah |
@@ -502,8 +510,10 @@ return hash_equals((string) config('services.iot.api_key'), (string) $this->inpu
 ```json
 {
   "api_key": "kode_rahasia_anda",
-  "device_id": "POT-001",
+  "device_id": "esp32-001",
   "sequence_no": 1,
+  "sent_at": "2026-05-30 17:00:00",
+  "total_sent": 10,
   "soil_raw": 3000,
   "moisture_percent": 50.0,
   "soil_condition": "Lembab",
@@ -522,33 +532,23 @@ return hash_equals((string) config('services.iot.api_key'), (string) $this->inpu
 }
 ```
 
+`sent_at` format `Y-m-d H:i:s` tanpa offset; firmware berasumsi WIB (`Asia/Jakarta`). Server parse pakai `config('services.iot.device_timezone')` lalu konversi ke UTC. `total_sent` adalah counter kumulatif yang naik 1 setiap kirim packet, dipakai untuk hitung sent vs received.
+
 ### Field Wajib
 
-Field ini harus selalu dikirim:
+`api_key`, `device_id`, `soil_raw`, `moisture_percent`, `soil_condition`, `water_status`, `dht_ok`, `soil_score`, `water_score`, `temp_score`, `ikp`, `watering_status`.
 
-- `api_key`
-- `device_id`
-- `soil_raw`
-- `moisture_percent`
-- `soil_condition`
-- `water_status`
-- `dht_ok`
-- `soil_score`
-- `water_score`
-- `temp_score`
-- `ikp`
-- `watering_status`
+### Field Opsional
 
-### Field Opsional / Bisa Null
+`sequence_no`, `sent_at`, `total_sent`, `distance_cm`, `water_level_percent`, `water_volume_ml`, `temperature`, `humidity`.
 
-Field ini boleh tidak ada atau bernilai `null` sesuai rules:
+### Alias Firmware Lama
 
-- `sequence_no`
-- `distance_cm`
-- `water_level_percent`
-- `water_volume_ml`
-- `temperature`
-- `humidity`
+| Alias diterima | Disimpan sebagai |
+|---|---|
+| `device_timestamp` | `sent_at` |
+| `total_sent` (atau fallback `sequence_no`) | `device_total_sent` |
+| `device_epoch` | *(dibuang)* |
 
 ### Saat Sensor Air Error
 
@@ -577,7 +577,7 @@ Field ini boleh tidak ada atau bernilai `null` sesuai rules:
 
 ## 8.1 Environment
 
-File `.env.example` sudah memiliki konfigurasi utama:
+`.env.example`:
 
 ```env
 APP_NAME=Laravel
@@ -600,25 +600,24 @@ DB_PASSWORD=
 | Variable | Fungsi |
 |---|---|
 | `APP_KEY` | Key enkripsi Laravel |
-| `APP_DEBUG` | Mode debug aplikasi |
-| `APP_URL` | URL dasar aplikasi |
-| `IOT_API_KEY` | API key yang harus dikirim ESP32 |
-| `DB_CONNECTION` | Driver database |
-| `DB_DATABASE` | Nama database |
-| `DB_USERNAME` | Username database |
-| `DB_PASSWORD` | Password database |
+| `APP_DEBUG` | Mode debug |
+| `APP_URL` | URL dasar (dipakai di evaluation status) |
+| `IOT_API_KEY` | API key ESP32 |
+| `IOT_DEVICE_TIMEZONE` | Timezone device, default `Asia/Jakarta`. Set kalau firmware kirim non-WIB |
+| `DB_*` | Konfigurasi database |
 
 ## 8.2 Services Config
 
-Konfigurasi IoT berada di `config/services.php`:
+`config/services.php`:
 
 ```php
 'iot' => [
     'api_key' => env('IOT_API_KEY'),
+    'device_timezone' => env('IOT_DEVICE_TIMEZONE', 'Asia/Jakarta'),
 ],
 ```
 
-Jika nilai `.env` berubah, jalankan:
+Setelah ubah `.env`:
 
 ```powershell
 php artisan config:clear
@@ -628,33 +627,12 @@ php artisan config:clear
 
 ## 9. Instalasi dan Menjalankan Project
 
-## 9.1 Install Dependency PHP
-
 ```powershell
 composer install
-```
-
-## 9.2 Install Dependency Frontend
-
-```powershell
 npm install
-```
-
-Frontend utama memakai CDN Tailwind dan CDN Chart.js pada Blade, tetapi dependency Vite tetap tersedia untuk asset Laravel.
-
-## 9.3 Buat File `.env`
-
-```powershell
 Copy-Item .env.example .env
-```
-
-## 9.4 Generate APP_KEY
-
-```powershell
 php artisan key:generate
 ```
-
-## 9.5 Atur Database
 
 Edit `.env`:
 
@@ -665,49 +643,33 @@ DB_PORT=3306
 DB_DATABASE=iot_dashboard
 DB_USERNAME=root
 DB_PASSWORD=
-```
 
-## 9.6 Atur API Key ESP32
-
-```env
 IOT_API_KEY=ganti_dengan_api_key_rahasia
+IOT_DEVICE_TIMEZONE=Asia/Jakarta
 ```
 
-Untuk membuat key acak:
+Generate key acak:
 
 ```powershell
 php artisan tinker
 ```
 
-Lalu jalankan:
-
 ```php
 Str::random(64)
 ```
 
-## 9.7 Jalankan Migration
+Migrate + serve:
 
 ```powershell
 php artisan migrate
-```
-
-## 9.8 Jalankan Server Lokal
-
-Agar bisa diakses ESP32 dalam jaringan yang sama:
-
-```powershell
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Dashboard:
+Akses:
 
 ```txt
-http://IP-LAPTOP:8000/
-```
-
-Endpoint ESP32:
-
-```txt
+http://IP-LAPTOP:8000/             -> dashboard
+http://IP-LAPTOP:8000/evaluation   -> halaman evaluasi
 http://IP-LAPTOP:8000/api/sensor-data
 ```
 
@@ -715,41 +677,39 @@ http://IP-LAPTOP:8000/api/sensor-data
 
 ## 10. Konfigurasi ESP32
 
-ESP32 harus memakai IP laptop/server, bukan `localhost`.
-
-### Local Network
-
 ```cpp
 const char* SERVER_URL = "http://192.168.1.10:8000/api/sensor-data";
 const char* API_KEY = "ganti_dengan_api_key_rahasia";
 const bool USE_HTTPS = false;
 ```
 
-### Production HTTPS
+Production HTTPS:
 
 ```cpp
 const char* SERVER_URL = "https://domainanda.com/api/sensor-data";
-const char* API_KEY = "ganti_dengan_api_key_rahasia";
 const bool USE_HTTPS = true;
 ```
 
-### Catatan Jaringan
+### Catatan untuk Field Evaluasi
 
-- ESP32 dan laptop harus satu jaringan WiFi.
-- Firewall Windows harus mengizinkan port `8000` jika memakai `php artisan serve`.
-- `localhost` pada ESP32 berarti ESP32 sendiri, bukan laptop.
+- ESP32 sebaiknya sinkron NTP sebelum kirim. Format `sent_at`: `"Y-m-d H:i:s"` waktu lokal device (WIB default).
+- `total_sent` di-increment setiap pengiriman (termasuk yang gagal lalu retry, sesuai keinginan: itu yang bikin PDR akurat).
+- ESP32 dan laptop satu jaringan WiFi.
+- Firewall Windows izinkan port 8000 saat pakai `php artisan serve`.
 
 ---
 
 ## 11. Pengujian API
 
-## 11.1 Test POST Data Sensor dengan PowerShell
+## 11.1 POST Data Sensor
 
 ```powershell
 $body = @{
   api_key = "ganti_dengan_api_key_rahasia"
-  device_id = "POT-001"
+  device_id = "esp32-001"
   sequence_no = 1
+  sent_at = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+  total_sent = 1
   soil_raw = 3000
   moisture_percent = 50.0
   soil_condition = "Lembab"
@@ -775,36 +735,138 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-## 11.2 Test Data Terbaru
+## 11.2 Data Terbaru
 
 ```powershell
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8000/api/sensor-readings/latest" `
-  -Headers @{ Accept = "application/json" }
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/sensor-readings/latest" -Headers @{ Accept = "application/json" }
 ```
 
-## 11.3 Test Riwayat Data
+## 11.3 Riwayat
 
 ```powershell
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8000/api/sensor-readings/history?limit=10" `
-  -Headers @{ Accept = "application/json" }
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/sensor-readings/history?limit=10" -Headers @{ Accept = "application/json" }
+```
+
+## 11.4 Metrik Evaluasi
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/evaluation/metrics" -Headers @{ Accept = "application/json" }
+```
+
+## 11.5 Automated Test
+
+```powershell
+php artisan test
+```
+
+PHPUnit dikonfigurasi pakai SQLite in-memory (`phpunit.xml`), jadi tidak butuh MySQL. Lihat [Section 16](#16-testing).
+
+---
+
+## 12. Modul Evaluasi (PDR + Delay)
+
+`App\Services\EvaluationService` adalah pusat logic evaluasi. Dipakai oleh `EvaluationController` (web + JSON endpoint).
+
+### 12.1 Window Waktu
+
+| Key | Range | Label |
+|---|---|---|
+| `recent` | 15 menit terakhir | "15 Menit Terakhir" |
+| `today` | sejak `00:00` hari ini | "Hari Ini" |
+| `all` | sejak data pertama | "All-time" |
+
+### 12.2 Konstanta
+
+```php
+EvaluationService::VALUE_FRESH_THRESHOLD_SECONDS = 25;
+```
+
+Data lebih tua dari threshold dianggap stale → device disconnected.
+
+### 12.3 Sesi Aktif (`activeSessionStart`)
+
+- Ambil reading paling baru. Jika umur > threshold → `null` (disconnected).
+- Telusuri 1000 reading terakhir (terbaru → terlama). Cari gap antar-reading > threshold.
+- Reading pertama setelah gap = awal sesi aktif. Kalau tidak ada gap, sesi mulai dari reading paling lama yang dicek.
+
+Tujuan: setelah ESP32 mati lalu reconnect, metrik dihitung sejak packet pertama sesi baru, bukan tercemar history sesi lama.
+
+### 12.4 Hitung Sent (`device_total_sent`)
+
+`Sent` dihitung dari counter kumulatif per device:
+
+1. Ambil semua reading di window yang punya `device_total_sent`, urut per device + waktu.
+2. Untuk reading pertama device: `sent += 1`.
+3. Untuk reading berikutnya: `sent += current - previous` (counter naik).
+4. Jika `current < previous` → counter reset (ESP32 reboot): hitung sebagai 1 packet baru, mulai akumulasi ulang.
+
+### 12.5 Edge Cases PDR
+
+- **Tidak ada `device_total_sent` valid**: `sent = received`, `pdr_estimated = true`, PDR = 100%.
+- **Counter parsial** (sebagian row tidak punya counter): `received` direduksi ke jumlah row dengan counter saja, `pdr_estimated = true`.
+- **PDR > 100%** (received > sent karena duplikasi atau out-of-order): clamp ke 100%.
+- **Sent = 0 dan received = 0**: PDR = 0%.
+
+Formula:
+
+```txt
+pdr = round((received / sent) * 100, 2)
+lost = max(0, sent - received)
+```
+
+### 12.6 Hitung Delay
+
+Delay diambil dari kolom `delay_ms` (sudah diisi server saat POST).
+
+```sql
+SELECT AVG(delay_ms) avg_ms,
+       MIN(delay_ms) min_ms,
+       MAX(delay_ms) max_ms,
+       COUNT(*)      n
+  FROM sensor_readings
+ WHERE delay_ms IS NOT NULL
+   AND created_at BETWEEN :from AND :to
+```
+
+Output: `delay_avg_ms`, `delay_min_ms`, `delay_max_ms`, `delay_samples`.
+
+### 12.7 Reset on Disconnect
+
+`metrics($window, $sessionStart, $resetOnDisconnect = true)`:
+
+- `true` (default, dipakai `/api/evaluation/metrics` polling) → kalau device disconnected, kembalikan `zeroMetrics()` dengan `reset = true`.
+- `false` (dipakai `/evaluation` saat initial render) → tampilkan angka historis, jangan reset.
+
+Window `from` di-clamp ke `max(window.from, activeSessionStart)` agar tidak menghitung packet sesi sebelumnya.
+
+### 12.8 Status Dashboard (`dashboardStatus`)
+
+| Field | Arti |
+|---|---|
+| `online` | Selalu `true` (request sampai = server hidup) |
+| `url` | `config('app.url')` |
+| `value_displayed` | `true` jika reading paling baru ≤ threshold detik |
+| `latest_age_seconds` | Umur reading paling baru (detik) |
+| `latest_at` | Timestamp ISO8601 reading paling baru |
+| `threshold_seconds` | `VALUE_FRESH_THRESHOLD_SECONDS` |
+
+### 12.9 Output `fullReport`
+
+```php
+[
+  'metrics' => [ 'recent' => [...], 'today' => [...], 'all' => [...] ],
+  'dashboard_status' => [ ... ],
+  'active_session_start' => '2026-05-30T09:55:30+00:00' | null,
+  'reset_on_disconnect' => true|false,
+  'generated_at' => '2026-05-30T10:00:05+00:00',
+]
 ```
 
 ---
 
-## 12. Penjelasan Logic IKP
+## 13. Penjelasan Logic IKP
 
-IKP adalah `Indeks Kesiapan Penyiraman`. Nilai ini dikirim dari ESP32, bukan dihitung oleh Laravel.
-
-Laravel hanya:
-
-- menerima `soil_score`, `water_score`, `temp_score`, dan `ikp`;
-- memvalidasi range nilai;
-- menyimpan ke database;
-- menampilkan pada dashboard.
-
-### Range Validasi
+IKP = `Indeks Kesiapan Penyiraman`. Dihitung di ESP32, bukan di Laravel. Laravel hanya validasi range + simpan + tampilkan.
 
 | Field | Range |
 |---|---:|
@@ -813,181 +875,189 @@ Laravel hanya:
 | `temp_score` | 0-100 |
 | `ikp` | 0-300 |
 
-### Interpretasi Umum
+Semakin besar IKP, semakin tinggi kebutuhan perhatian. Keputusan teks dikirim lewat `watering_status`.
 
-Semakin besar nilai IKP, semakin tinggi kebutuhan perhatian/penyiraman sesuai logic ESP32. Teks keputusan dikirim lewat field `watering_status`.
-
-Contoh:
-
-| IKP | `watering_status` |
+| IKP | `watering_status` (contoh) |
 |---:|---|
 | 30 | Tidak perlu disiram |
 | 50 | Perlu dipantau |
 | 100+ | Perlu disiram |
 
-Catatan: batas keputusan mengikuti kode ESP32, bukan Laravel.
+Batas keputusan = kode ESP32, bukan Laravel.
 
 ---
 
-## 13. Keamanan
+## 14. Keamanan
 
-### API Key
-
-- API key disimpan di `.env` sebagai `IOT_API_KEY`.
-- ESP32 mengirim API key dalam payload JSON.
-- Laravel membandingkan API key memakai `hash_equals()`.
+- API key di `.env` (`IOT_API_KEY`), bukan di kode.
+- Bandingkan pakai `hash_equals()` (timing-safe).
 - `api_key` tidak disimpan ke database.
-
-### Hal yang Perlu Dijaga
-
-- Jangan commit file `.env`.
-- Gunakan API key panjang dan acak.
-- Untuk production, gunakan HTTPS.
-- Batasi akses server jika dashboard hanya untuk jaringan internal.
-- Pertimbangkan rate limiting tambahan jika endpoint dibuka ke internet.
+- Jangan commit `.env`.
+- Production: HTTPS wajib.
+- Pertimbangkan rate limiting pada `/api/sensor-data` jika dibuka ke internet.
+- Endpoint baca (`history`, `latest`, `evaluation/metrics`) saat ini publik—batasi via firewall / auth jika dashboard internal.
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
-## 14.1 `401 Unauthorized`
+## 15.1 `401 Unauthorized`
 
-Penyebab:
+- `api_key` ESP32 ≠ `IOT_API_KEY`.
+- Config Laravel masih cache lama → `php artisan config:clear`.
 
-- `api_key` dari ESP32 tidak sama dengan `IOT_API_KEY`.
-- Config Laravel masih cache nilai lama.
+## 15.2 `422 Unprocessable Entity`
 
-Solusi:
+- Field wajib hilang / tipe salah / di luar range.
+- `soil_condition` bukan `Kering`/`Lembab`/`Basah`.
+- `sent_at` format invalid.
 
-```powershell
-php artisan config:clear
-```
+Cek response JSON Laravel untuk detail rule yang gagal.
 
-Lalu pastikan API key ESP32 sama dengan `.env`.
+## 15.3 Dashboard Kosong
 
-## 14.2 `422 Unprocessable Entity`
-
-Penyebab:
-
-- Field wajib tidak dikirim.
-- Tipe data salah.
-- Nilai di luar range validasi.
-- `soil_condition` bukan `Kering`, `Lembab`, atau `Basah`.
-
-Solusi:
-
-- Cek response JSON dari Laravel.
-- Cocokkan payload dengan tabel rules validasi.
-- Cek Serial Monitor ESP32.
-
-## 14.3 Dashboard Kosong
-
-Penyebab:
-
-- Belum ada data di tabel `sensor_readings`.
+- Belum ada data di `sensor_readings`.
 - ESP32 belum berhasil POST.
-- Database belum migrate.
+- Belum migrate (`php artisan migrate`).
 
-Solusi:
+## 15.4 ESP32 Tidak Connect ke Laravel Lokal
 
-```powershell
-php artisan migrate
-```
+- Beda jaringan, server listen `127.0.0.1`, firewall port 8000, ESP32 pakai `localhost`.
+- Solusi: `php artisan serve --host=0.0.0.0 --port=8000` + IP laptop di `SERVER_URL`.
 
-Cek endpoint:
+## 15.5 Status Dashboard `Disconnected`
 
-```txt
-http://IP-LAPTOP:8000/api/sensor-readings/latest
-```
+- Endpoint history gagal / server mati / network error.
 
-## 14.4 ESP32 Tidak Bisa Connect ke Laravel Lokal
+## 15.6 Delay Negatif atau Sangat Besar
 
-Penyebab umum:
+- Clock ESP32 tidak sinkron NTP.
+- `IOT_DEVICE_TIMEZONE` tidak match dengan timezone yang dipakai firmware.
+- Server clock drift (cek NTP server).
+- Negatif tidak akan tersimpan: server clamp ke 0. Tapi delay yang sangat besar (jam-jaman) menandakan misconfig timezone.
 
-- ESP32 dan laptop beda jaringan.
-- Server Laravel hanya listen di `127.0.0.1`.
-- Firewall Windows memblokir port.
-- ESP32 memakai `localhost`.
+## 15.7 PDR Selalu 100% atau `pdr_estimated = true`
 
-Solusi:
+- ESP32 belum kirim `total_sent` / `device_total_sent` → server fallback `sent = received`.
+- Pastikan firmware update kirim counter setiap request.
 
-```powershell
-php artisan serve --host=0.0.0.0 --port=8000
-```
+## 15.8 Metrik Reset Tiap Polling
 
-Gunakan IP laptop pada `SERVER_URL`.
-
-## 14.5 Status Dashboard `Disconnected`
-
-Penyebab:
-
-- API `/api/sensor-readings/history` gagal diakses.
-- Server Laravel mati.
-- Network error.
-- Response API bukan status 2xx.
-
-Solusi:
-
-- Refresh halaman.
-- Cek server Laravel.
-- Cek console browser.
-- Buka endpoint history langsung di browser.
+- Data terakhir lebih tua dari 25 detik → device dianggap disconnected, metric reset.
+- Naikkan `VALUE_FRESH_THRESHOLD_SECONDS` atau pastikan ESP32 kirim minimal tiap < 25 detik.
+- Untuk lihat angka historis tanpa reset: `/api/evaluation/metrics?reset_on_disconnect=0`.
 
 ---
 
-## 15. Catatan Pengembangan Lanjutan
+## 16. Testing
 
-Fitur yang bisa ditambahkan:
+### Konfigurasi
 
-- Login admin untuk dashboard.
-- Filter data berdasarkan `device_id`.
-- Export riwayat sensor ke CSV/Excel.
-- Notifikasi jika air rendah atau tanaman kering.
-- Grafik per sensor dengan rentang waktu.
-- Realtime update memakai WebSocket, bukan polling.
-- Rate limiting khusus endpoint ESP32.
-- API token per perangkat jika device lebih dari satu.
-- Halaman detail perangkat.
-- Unit test dan feature test untuk endpoint API.
+`phpunit.xml` memakai SQLite in-memory:
+
+```xml
+<env name="DB_CONNECTION" value="sqlite" force="true"/>
+<env name="DB_DATABASE" value=":memory:" force="true"/>
+```
+
+Tidak butuh MySQL untuk test.
+
+### Test yang Sudah Ada
+
+| File | Cakupan |
+|---|---|
+| `tests/Feature/SensorDataControllerTest.php` | Reject API key salah, simpan payload + hitung `delay_ms`, clamp delay negatif ke 0 |
+| `tests/Unit/EvaluationServiceTest.php` | Reset saat data stale, opsi skip reset, partial counter, counter reset device |
+
+### Factory
+
+`database/factories/SensorReadingFactory.php` menyediakan default lengkap (`device_id = esp32-001`, `delay_ms = 100`, dst).
+
+Pakai di test:
+
+```php
+SensorReading::factory()->create([
+    'created_at' => Carbon::parse('2026-05-30 10:00:30'),
+    'device_total_sent' => 5,
+]);
+```
+
+### Jalankan
+
+```powershell
+php artisan test
+php artisan test --filter=EvaluationServiceTest
+php artisan test --testsuite=Feature
+```
+
+### Saran Test Tambahan
+
+- Feature test endpoint `/api/evaluation/metrics`.
+- Test alias firmware lama (`device_timestamp`, `total_sent` fallback ke `sequence_no`).
+- Test `IOT_DEVICE_TIMEZONE` non-WIB.
+- Test PDR > 100% di-clamp ke 100.
 
 ---
 
-## 16. Ringkasan Endpoint
+## 17. Catatan Pengembangan Lanjutan
+
+- Login admin untuk dashboard + evaluasi.
+- Filter data per `device_id`.
+- Export CSV/Excel.
+- Notifikasi (email/Telegram) saat air rendah, tanaman kering, atau PDR turun.
+- Realtime update via WebSocket (Pusher / Laravel Reverb).
+- Rate limiting `/api/sensor-data`.
+- API token per perangkat (Sanctum) jika multi-device.
+- Halaman detail per perangkat.
+- Persist `active_session_start` ke tabel terpisah agar `activeSessionStart()` tidak scan 1000 row tiap polling.
+- Index `(device_id, created_at, device_total_sent)` jika data > jutaan row.
+
+---
+
+## 18. Ringkasan Endpoint
 
 | Method | Endpoint | Fungsi | Auth |
 |---|---|---|---|
-| POST | `/api/sensor-data` | Menerima data sensor dari ESP32 | `api_key` payload |
-| GET | `/api/sensor-readings/latest` | Mengambil data terbaru | Tidak ada |
-| GET | `/api/sensor-readings/history` | Mengambil riwayat data | Tidak ada |
-| GET | `/` | Menampilkan dashboard | Tidak ada |
+| POST | `/api/sensor-data` | Terima data sensor + hitung delay | `api_key` payload |
+| GET | `/api/sensor-readings/latest` | Reading terbaru | — |
+| GET | `/api/sensor-readings/history` | Riwayat (limit 1-500) | — |
+| GET | `/api/evaluation/metrics` | PDR + delay + status (3 window) | — |
+| GET | `/` | Halaman dashboard | — |
+| GET | `/evaluation` | Halaman evaluasi | — |
 
 ---
 
-## 17. Ringkasan File dan Tanggung Jawab
+## 19. Ringkasan File dan Tanggung Jawab
 
 | File | Tanggung Jawab |
 |---|---|
-| `StoreSensorReadingRequest.php` | Gerbang validasi dan authorization request ESP32 |
-| `SensorDataController.php` | Menyimpan data sensor dan menyediakan API pembacaan |
-| `DashboardController.php` | Menyiapkan data awal dashboard |
-| `SensorReading.php` | Representasi tabel sensor_readings |
+| `StoreSensorReadingRequest.php` | Authorize API key + validasi payload (termasuk alias firmware lama) |
+| `SensorDataController.php` | Simpan sensor, hitung `delay_ms`, sediakan latest + history |
+| `DashboardController.php` | Data awal halaman dashboard |
+| `EvaluationController.php` | View `/evaluation` + endpoint JSON metrics |
+| `EvaluationService.php` | Window range, sesi aktif, hitung PDR + delay, status dashboard |
+| `SensorReading.php` | Eloquent model `sensor_readings` |
+| `SensorReadingFactory.php` | Factory untuk testing |
 | `dashboard.blade.php` | UI dashboard, chart, table, polling |
-| `api.php` | Daftar endpoint API |
-| `web.php` | Route dashboard |
-| `services.php` | Konfigurasi API key IoT |
-| migration sensor readings | Struktur penyimpanan data sensor |
+| `evaluation.blade.php` | UI evaluasi (PDR, delay, status) |
+| `api.php` | Endpoint API |
+| `web.php` | Route halaman |
+| `services.php` | `iot.api_key` + `iot.device_timezone` |
+| `2026_05_29_*_create_sensor_readings_table.php` | Schema dasar |
+| `2026_05_30_*_add_evaluation_columns_to_sensor_readings.php` | Kolom evaluasi |
+| `phpunit.xml` | Konfigurasi PHPUnit (SQLite in-memory) |
 
 ---
 
-## 18. Kesimpulan
+## 20. Kesimpulan
 
-Project ini sudah memiliki alur lengkap untuk monitoring tanaman berbasis IoT:
+Project sekarang punya alur lengkap:
 
-1. ESP32 membaca sensor.
-2. ESP32 mengirim payload JSON.
-3. Laravel memvalidasi API key dan data.
-4. Laravel menyimpan pembacaan sensor.
-5. Dashboard menampilkan kondisi terbaru, grafik, detail, dan riwayat.
-6. Dashboard memperbarui data otomatis tiap 5 detik.
+1. ESP32 baca sensor + sinkron NTP + naikkan counter.
+2. ESP32 POST JSON (`sent_at` + `total_sent` + data sensor).
+3. Laravel validasi + hitung `delay_ms` + simpan.
+4. Dashboard menampilkan kondisi terbaru, grafik, detail, riwayat (auto-refresh 5 detik).
+5. Halaman evaluasi menghitung PDR + delay per window dengan deteksi disconnect dan handling counter reset.
+6. Test PHPUnit menjamin reject API key salah, perhitungan delay benar, dan logic evaluasi tahan terhadap edge case (counter reset, partial counter, stale data).
 
-Dokumentasi ini bisa dipakai sebagai panduan instalasi, pengembangan, debugging, dan presentasi project.
+Dokumentasi ini dipakai sebagai panduan instalasi, pengembangan, debugging, dan presentasi project.
