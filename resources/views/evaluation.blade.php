@@ -72,7 +72,7 @@
                     <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <tr>
                             <th class="px-5 py-2.5 font-medium">Metrik</th>
-                            <th class="px-5 py-2.5 font-medium">1 Jam Terakhir</th>
+                            <th class="px-5 py-2.5 font-medium">15 Menit Terakhir</th>
                             <th class="px-5 py-2.5 font-medium">Hari Ini</th>
                             <th class="px-5 py-2.5 font-medium">All-time</th>
                         </tr>
@@ -80,43 +80,43 @@
                     <tbody class="divide-y divide-gray-100">
                         <tr>
                             <td class="px-5 py-2.5 font-medium text-gray-700">Jumlah data terkirim</td>
-                            <td class="px-5 py-2.5" id="sent-hour">{{ $report['metrics']['hour']['sent'] }}</td>
+                            <td class="px-5 py-2.5" id="sent-recent">{{ $report['metrics']['recent']['sent'] }}</td>
                             <td class="px-5 py-2.5" id="sent-today">{{ $report['metrics']['today']['sent'] }}</td>
                             <td class="px-5 py-2.5" id="sent-all">{{ $report['metrics']['all']['sent'] }}</td>
                         </tr>
                         <tr class="bg-gray-50/50">
                             <td class="px-5 py-2.5 font-medium text-gray-700">Jumlah data masuk DB</td>
-                            <td class="px-5 py-2.5" id="received-hour">{{ $report['metrics']['hour']['received'] }}</td>
+                            <td class="px-5 py-2.5" id="received-recent">{{ $report['metrics']['recent']['received'] }}</td>
                             <td class="px-5 py-2.5" id="received-today">{{ $report['metrics']['today']['received'] }}</td>
                             <td class="px-5 py-2.5" id="received-all">{{ $report['metrics']['all']['received'] }}</td>
                         </tr>
                         <tr>
                             <td class="px-5 py-2.5 font-medium text-gray-700">Packet Delivery Ratio</td>
-                            <td class="px-5 py-2.5" id="pdr-hour">{{ $report['metrics']['hour']['pdr'] }}%</td>
+                            <td class="px-5 py-2.5" id="pdr-recent">{{ $report['metrics']['recent']['pdr'] }}%</td>
                             <td class="px-5 py-2.5" id="pdr-today">{{ $report['metrics']['today']['pdr'] }}%</td>
                             <td class="px-5 py-2.5" id="pdr-all">{{ $report['metrics']['all']['pdr'] }}%</td>
                         </tr>
                         <tr class="bg-gray-50/50">
                             <td class="px-5 py-2.5 font-medium text-gray-700">Packet hilang</td>
-                            <td class="px-5 py-2.5" id="lost-hour">{{ $report['metrics']['hour']['lost'] }}</td>
+                            <td class="px-5 py-2.5" id="lost-recent">{{ $report['metrics']['recent']['lost'] }}</td>
                             <td class="px-5 py-2.5" id="lost-today">{{ $report['metrics']['today']['lost'] }}</td>
                             <td class="px-5 py-2.5" id="lost-all">{{ $report['metrics']['all']['lost'] }}</td>
                         </tr>
                         <tr>
                             <td class="px-5 py-2.5 font-medium text-gray-700">Delay rata-rata</td>
-                            <td class="px-5 py-2.5" id="davg-hour">{{ $report['metrics']['hour']['delay_avg_ms'] ?? '—' }} ms</td>
+                            <td class="px-5 py-2.5" id="davg-recent">{{ $report['metrics']['recent']['delay_avg_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="davg-today">{{ $report['metrics']['today']['delay_avg_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="davg-all">{{ $report['metrics']['all']['delay_avg_ms'] ?? '—' }} ms</td>
                         </tr>
                         <tr class="bg-gray-50/50">
                             <td class="px-5 py-2.5 font-medium text-gray-700">Delay min</td>
-                            <td class="px-5 py-2.5" id="dmin-hour">{{ $report['metrics']['hour']['delay_min_ms'] ?? '—' }} ms</td>
+                            <td class="px-5 py-2.5" id="dmin-recent">{{ $report['metrics']['recent']['delay_min_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="dmin-today">{{ $report['metrics']['today']['delay_min_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="dmin-all">{{ $report['metrics']['all']['delay_min_ms'] ?? '—' }} ms</td>
                         </tr>
                         <tr>
                             <td class="px-5 py-2.5 font-medium text-gray-700">Delay max</td>
-                            <td class="px-5 py-2.5" id="dmax-hour">{{ $report['metrics']['hour']['delay_max_ms'] ?? '—' }} ms</td>
+                            <td class="px-5 py-2.5" id="dmax-recent">{{ $report['metrics']['recent']['delay_max_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="dmax-today">{{ $report['metrics']['today']['delay_max_ms'] ?? '—' }} ms</td>
                             <td class="px-5 py-2.5" id="dmax-all">{{ $report['metrics']['all']['delay_max_ms'] ?? '—' }} ms</td>
                         </tr>
@@ -165,7 +165,7 @@
                 set('genAt', 'Generated: ' + r.generated_at);
 
                 // Metrik per window
-                ['hour', 'today', 'all'].forEach(w => {
+                ['recent', 'today', 'all'].forEach(w => {
                     const m = r.metrics[w];
                     set(`sent-${w}`, m.sent);
                     set(`received-${w}`, m.received);

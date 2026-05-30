@@ -18,19 +18,19 @@ class EvaluationService
      * Mengambil rentang waktu (from, to) untuk window evaluasi.
      *
      * Window yang didukung:
-     * - 'hour' : 60 menit terakhir
-     * - 'today': sejak 00:00 hari ini sampai sekarang
-     * - 'all'  : sejak data pertama sampai sekarang
+     * - 'recent': 15 menit terakhir
+     * - 'today' : sejak 00:00 hari ini sampai sekarang
+     * - 'all'   : sejak data pertama sampai sekarang
      */
     public function windowRange(string $window): array
     {
         $now = Carbon::now();
 
         return match ($window) {
-            'hour' => [
-                'from' => $now->copy()->subHour(),
+            'recent' => [
+                'from' => $now->copy()->subMinutes(15),
                 'to' => $now,
-                'label' => '1 Jam Terakhir',
+                'label' => '15 Menit Terakhir',
             ],
             'today' => [
                 'from' => $now->copy()->startOfDay(),
@@ -150,7 +150,7 @@ class EvaluationService
     {
         return [
             'metrics' => [
-                'hour' => $this->metrics('hour'),
+                'recent' => $this->metrics('recent'),
                 'today' => $this->metrics('today'),
                 'all' => $this->metrics('all'),
             ],
