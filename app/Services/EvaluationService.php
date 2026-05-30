@@ -117,23 +117,28 @@ class EvaluationService
      * Evaluasi selalu dibatasi sesi aktif terakhir. Saat device disconnected,
      * metrics otomatis reset ke 0.
      */
-    public function metrics(string $window, ?Carbon $activeSessionStart = null): array
+    public function metrics(string $window, ?Carbon $activeSessionStart = null, bool $resetOnDisconnect = true): array
     {
         $range = $this->windowRange($window);
-        $activeSessionStart ??= $this->activeSessionStart();
 
-        if (! $activeSessionStart) {
-            return $this->zeroMetrics($window);
+        if ($resetOnDisconnect) {
+            $activeSessionStart ??= $this->activeSessionStart();
+
+            if (! $activeSessionStart) {
+                return $this->zeroMetrics($window);
+            }
         }
 
         $from = $range['from'];
-        if (! $from || $activeSessionStart->gt($from)) {
+        if ($resetOnDisconnect && $activeSessionStart && (! $from || $activeSessionStart->gt($from))) {
             $from = $activeSessionStart;
         }
 
-        $query = SensorReading::query()
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<=', $range['to']);
+        $query = SensorReading::query();
+        if ($from) {
+            $query->where('created_at', '>=', $from);
+        }
+        $query->where('created_at', '<=', $range['to']);
 
         $received = (clone $query)->count();
 
@@ -174,7 +179,7 @@ class EvaluationService
             'window' => [
                 'key' => $window,
                 'label' => $range['label'],
-                'from' => $from->toIso8601String(),
+                'from' => $from?->toIso8601String(),
                 'to' => $range['to']->toIso8601String(),
             ],
             'sent' => $sent,
@@ -220,18 +225,19 @@ class EvaluationService
     /**
      * Mengambil semua metrik evaluasi (3 window) dan status dashboard.
      */
-    public function fullReport(): array
+    public function fullReport(bool $resetOnDisconnect = true): array
     {
-        $activeSessionStart = $this->activeSessionStart();
+        $activeSessionStart = $resetOnDisconnect ? $this->activeSessionStart() : null;
 
         return [
             'metrics' => [
-                'recent' => $this->metrics('recent', $activeSessionStart),
-                'today' => $this->metrics('today', $activeSessionStart),
-                'all' => $this->metrics('all', $activeSessionStart),
+                'recent' => $this->metrics('recent', $activeSessionStart, $resetOnDisconnect),
+                'today' => $this->metrics('today', $activeSessionStart, $resetOnDisconnect),
+                'all' => $this->metrics('all', $activeSessionStart, $resetOnDisconnect),
             ],
             'dashboard_status' => $this->dashboardStatus(),
             'active_session_start' => $activeSessionStart?->toIso8601String(),
+            'reset_on_disconnect' => $resetOnDisconnect,
             'generated_at' => now()->toIso8601String(),
         ];
     }

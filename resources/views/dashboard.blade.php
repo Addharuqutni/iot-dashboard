@@ -14,7 +14,7 @@
         <header class="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
             <div class="flex items-center gap-3">
                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100/70 text-emerald-700 sm:h-10 sm:w-10">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2 3.7-2 .4-3.5.4-4.7-.4-1.2-.8-1.8-2.1-2-3.7 2-.4 3.5-.4 4.7.4Z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.6 1-1 1.4-2.4 1.3-4.3-1.9.1-3.4.6-4.5 1.9Z"/></svg>
                 </span>
                 <div class="min-w-0">
                     <h1 class="truncate text-lg font-semibold text-gray-900 sm:text-2xl">Dashboard Monitoring Tanaman</h1>
@@ -23,7 +23,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
                 <a href="{{ route('evaluation') }}" class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
                     Evaluasi
                 </a>
                 <span id="liveStatus" class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
@@ -57,7 +57,7 @@
                     <div class="flex items-center justify-between">
                         <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Kelembapan Tanah</p>
                         <span class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100/70 text-emerald-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.8 4-4.1 0-1.2-.6-2.3-1.7-3.2C8.1 8 7.3 6.8 7 5c-.3 1.8-1.1 3-2.3 4C3.6 9.9 3 11 3 12.2c0 2.3 1.8 4.1 4 4.1Z"/><path d="M12.6 14.3c1.9.4 3.9-.8 4.4-2.7.2-1 0-2.1-.7-3.1-.7-1-1.2-2.1-1.3-3.5-.8 1.2-1.8 2-2.9 2.6-1.1.6-1.8 1.5-2.1 2.5"/><path d="M16.8 20c1.6-.7 2.4-2.5 1.7-4.1-.3-.8-1-1.4-1.9-1.8-.9-.4-1.7-1-2.4-2-.2 1.3-.6 2.3-1.3 3-.7.7-1 1.6-.9 2.5"/></svg>
                         </span>
                     </div>
                     <div id="kpiMoisture" class="mt-2 text-2xl font-semibold text-gray-900">
@@ -69,7 +69,7 @@
                     <div class="flex items-center justify-between">
                         <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Cadangan Air</p>
                         <span class="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100/70 text-sky-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14l-1.5 16a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2L5 3z"/><path d="M5 8h14"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
                         </span>
                     </div>
                     <div id="kpiWater" class="mt-2 text-2xl font-semibold text-gray-900">
@@ -81,7 +81,7 @@
                     <div class="flex items-center justify-between">
                         <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Suhu Udara</p>
                         <span class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100/70 text-amber-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
                         </span>
                     </div>
                     <div id="kpiTemp" class="mt-2 text-2xl font-semibold text-gray-900">
@@ -95,7 +95,7 @@
                     <div class="flex items-center justify-between">
                         <p class="text-xs font-medium uppercase tracking-wide text-gray-500">IKP</p>
                         <span class="flex h-8 w-8 items-center justify-center rounded-full bg-rose-100/70 text-rose-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
                         </span>
                     </div>
                     <div id="kpiIkp" class="mt-2 text-2xl font-semibold text-gray-900">{{ $latest?->ikp ?? '—' }}</div>
@@ -106,7 +106,7 @@
             {{-- EVALUASI RINGKAS (window: Hari Ini) --}}
             <section class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <article class="rounded-lg border border-gray-200 bg-white p-5">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">PDR (Hari Ini)</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">PDR</p>
                     <div id="evalPdr" class="mt-2 text-2xl font-semibold text-gray-900">—%</div>
                     <p id="evalPdrMeta" class="mt-1 text-xs text-gray-500">Packet Delivery Ratio</p>
                 </article>
@@ -455,7 +455,7 @@
         // ---------- Evaluasi Ringkas (window: Hari Ini) ----------
         const fetchEvaluation = async () => {
             try {
-                const res = await fetch('/api/evaluation/metrics', {
+                const res = await fetch('/api/evaluation/metrics?reset_on_disconnect=1', {
                     headers: { 'Accept': 'application/json' },
                     cache: 'no-store',
                 });

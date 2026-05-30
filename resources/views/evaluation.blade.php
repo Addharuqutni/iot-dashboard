@@ -13,7 +13,7 @@
         <header class="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
             <div class="flex items-center gap-3">
                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100/70 text-indigo-700 sm:h-10 sm:w-10">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
                 </span>
                 <div class="min-w-0">
                     <h1 class="truncate text-lg font-semibold text-gray-900 sm:text-2xl">Evaluasi Sistem IoT</h1>
@@ -151,7 +151,7 @@
 
         const fetchReport = async () => {
             try {
-                const res = await fetch('/api/evaluation/metrics', {
+                const res = await fetch('/api/evaluation/metrics?reset_on_disconnect=0', {
                     headers: { 'Accept': 'application/json' },
                     cache: 'no-store',
                 });

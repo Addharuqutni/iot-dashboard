@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\EvaluationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class EvaluationController extends Controller
 {
@@ -20,15 +21,18 @@ class EvaluationController extends Controller
     public function index()
     {
         return view('evaluation', [
-            'report' => $this->service->fullReport(),
+            // Halaman /evaluation tidak reset saat device disconnected.
+            'report' => $this->service->fullReport(resetOnDisconnect: false),
         ]);
     }
 
     /**
      * Mengembalikan laporan evaluasi sebagai JSON untuk polling frontend.
      */
-    public function metrics(): JsonResponse
+    public function metrics(Request $request): JsonResponse
     {
-        return response()->json($this->service->fullReport());
+        $resetOnDisconnect = $request->boolean('reset_on_disconnect', true);
+
+        return response()->json($this->service->fullReport($resetOnDisconnect));
     }
 }
