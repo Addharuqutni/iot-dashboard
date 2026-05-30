@@ -209,11 +209,11 @@
         // REAL-TIME DASHBOARD
         // Polling /api/sensor-readings/history setiap 2 detik.
         // Update KPI, detail panel, tabel riwayat, dan chart tanpa reload.
-        // Watchdog: > 4 detik tanpa data baru -> status berubah Disconnected.
+        // Watchdog: > 25 detik tanpa data baru -> status berubah Disconnected.
         // ============================================================
 
         const POLL_INTERVAL_MS = 2000;          // polling tiap 2 detik
-        const STALE_THRESHOLD_MS = 4000;        // > 4 detik tanpa data = disconnect
+        const STALE_THRESHOLD_MS = 25000;       // > 25 detik tanpa data = disconnect
         const WATCHDOG_INTERVAL_MS = 1000;      // cek staleness tiap 1 detik
         const HISTORY_LIMIT = 50;
         const HISTORY_ROWS = 20; // jumlah baris tabel yang ditampilkan

@@ -12,7 +12,7 @@ class EvaluationService
      * Threshold dalam detik untuk menentukan apakah dashboard masih
      * menampilkan data segar (value tampil = true).
      */
-    public const VALUE_FRESH_THRESHOLD_SECONDS = 4;
+    public const VALUE_FRESH_THRESHOLD_SECONDS = 25;
 
     /**
      * Mengambil rentang waktu (from, to) untuk window evaluasi.
@@ -46,21 +46,94 @@ class EvaluationService
     }
 
     /**
-     * Menghitung metrik evaluasi (sent, received, PDR, delay) untuk satu window.
+     * Mengambil awal sesi aktif terakhir.
      *
-     * Logika sent: untuk setiap device dalam window, sent = MAX(device_total_sent)
-     * - MIN(device_total_sent) + 1. Sum lintas device. Jika device_total_sent
-     * tidak tersedia, fallback ke received (estimasi PDR = 100%).
+     * Jika data terakhir lebih tua dari threshold, device dianggap disconnected
+     * dan evaluasi reset ke 0. Jika device reconnect, sesi baru dimulai dari
+     * record pertama setelah gap > threshold.
      */
-    public function metrics(string $window): array
+    public function activeSessionStart(): ?Carbon
+    {
+        $latest = SensorReading::latest()->first();
+        if (! $latest || ! $latest->created_at) {
+            return null;
+        }
+
+        $latestAge = abs(now()->diffInSeconds($latest->created_at, false));
+        if ($latestAge > self::VALUE_FRESH_THRESHOLD_SECONDS) {
+            return null;
+        }
+
+        $readings = SensorReading::query()
+            ->latest()
+            ->limit(1000)
+            ->get(['id', 'created_at']);
+
+        $previousNewer = null;
+        foreach ($readings as $reading) {
+            if ($previousNewer) {
+                $gap = abs($previousNewer->created_at->diffInSeconds($reading->created_at, false));
+                if ($gap > self::VALUE_FRESH_THRESHOLD_SECONDS) {
+                    return $previousNewer->created_at;
+                }
+            }
+
+            $previousNewer = $reading;
+        }
+
+        return $readings->last()?->created_at;
+    }
+
+    /**
+     * Metrik kosong saat device disconnected / belum ada data.
+     */
+    public function zeroMetrics(string $window): array
     {
         $range = $this->windowRange($window);
 
-        $query = SensorReading::query();
-        if ($range['from']) {
-            $query->where('created_at', '>=', $range['from']);
+        return [
+            'window' => [
+                'key' => $window,
+                'label' => $range['label'],
+                'from' => $range['from']?->toIso8601String(),
+                'to' => $range['to']->toIso8601String(),
+            ],
+            'sent' => 0,
+            'received' => 0,
+            'lost' => 0,
+            'pdr' => 0.0,
+            'pdr_estimated' => false,
+            'delay_avg_ms' => null,
+            'delay_min_ms' => null,
+            'delay_max_ms' => null,
+            'delay_samples' => 0,
+            'reset' => true,
+        ];
+    }
+
+    /**
+     * Menghitung metrik evaluasi (sent, received, PDR, delay) untuk satu window.
+     *
+     * Evaluasi selalu dibatasi sesi aktif terakhir. Saat device disconnected,
+     * metrics otomatis reset ke 0.
+     */
+    public function metrics(string $window, ?Carbon $activeSessionStart = null): array
+    {
+        $range = $this->windowRange($window);
+        $activeSessionStart ??= $this->activeSessionStart();
+
+        if (! $activeSessionStart) {
+            return $this->zeroMetrics($window);
         }
-        $query->where('created_at', '<=', $range['to']);
+
+        $from = $range['from'];
+        if (! $from || $activeSessionStart->gt($from)) {
+            $from = $activeSessionStart;
+        }
+
+        $query = SensorReading::query()
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<=', $range['to']);
 
         $received = (clone $query)->count();
 
@@ -101,7 +174,7 @@ class EvaluationService
             'window' => [
                 'key' => $window,
                 'label' => $range['label'],
-                'from' => $range['from']?->toIso8601String(),
+                'from' => $from->toIso8601String(),
                 'to' => $range['to']->toIso8601String(),
             ],
             'sent' => $sent,
@@ -113,6 +186,7 @@ class EvaluationService
             'delay_min_ms' => $delayMin,
             'delay_max_ms' => $delayMax,
             'delay_samples' => $delaySamples,
+            'reset' => false,
         ];
     }
 
@@ -120,7 +194,7 @@ class EvaluationService
      * Mengambil status dashboard online dan apakah value sensor saat ini tampil.
      *
      * online: jika request sampai sini berarti server hidup.
-     * value_displayed: true jika ada reading dengan umur < threshold detik.
+     * value_displayed: true jika ada reading dengan umur <= threshold detik.
      */
     public function dashboardStatus(): array
     {
@@ -148,13 +222,16 @@ class EvaluationService
      */
     public function fullReport(): array
     {
+        $activeSessionStart = $this->activeSessionStart();
+
         return [
             'metrics' => [
-                'recent' => $this->metrics('recent'),
-                'today' => $this->metrics('today'),
-                'all' => $this->metrics('all'),
+                'recent' => $this->metrics('recent', $activeSessionStart),
+                'today' => $this->metrics('today', $activeSessionStart),
+                'all' => $this->metrics('all', $activeSessionStart),
             ],
             'dashboard_status' => $this->dashboardStatus(),
+            'active_session_start' => $activeSessionStart?->toIso8601String(),
             'generated_at' => now()->toIso8601String(),
         ];
     }
