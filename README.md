@@ -16,6 +16,22 @@ Sensor yang digunakan:
 
 ---
 
+## Screenshot
+
+### Dashboard Monitoring
+
+![Dashboard Monitoring Tanaman](docs/screenshots/dashboard.png)
+
+Menampilkan KPI kelembapan tanah, cadangan air, suhu, dan IKP, grafik sensor real-time, status koneksi perangkat, ringkasan evaluasi, serta tabel riwayat data terbaru.
+
+### Halaman Evaluasi Sistem
+
+![Halaman Evaluasi Sistem](docs/screenshots/evaluation.png)
+
+Menampilkan Packet Delivery Ratio (PDR), rata-rata delay pengiriman data, status online perangkat, dan metrik evaluasi kualitas pengiriman data.
+
+---
+
 ## Fitur Utama
 
 - Terima data sensor dari ESP32 lewat REST API.
